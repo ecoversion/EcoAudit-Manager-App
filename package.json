@@ -1,0 +1,43 @@
+{
+  "name": "ecoaudit-manager-app",
+  "version": "1.1.0",
+  "description": "EcoAudit_Manager App — ECOVERSION Group. Classement et gestion de la documentation d'audit.",
+  "main": "main.js",
+  "author": "ECOVERSION Group",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.ecoversiongroup.ecoauditmanager",
+    "productName": "EcoAudit_Manager App",
+    "icon": "build/icon.ico",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "build/icon.png"
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "EcoAudit_Manager App"
+    }
+  }
+}

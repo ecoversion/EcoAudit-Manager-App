@@ -1,0 +1,139 @@
+// main.js — EcoAudit_Manager App (version bureau / Electron)
+// Ce processus a un accès réel au système d'exploitation — c'est lui qui permet
+// d'ouvrir un fichier directement avec Word/Excel/PowerPoint (chose impossible
+// depuis un simple site web dans un navigateur).
+
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const path = require('path');
+const fs = require('fs');
+
+const DB_FILE = () => path.join(app.getPath('userData'), 'ecoaudit-db.json');
+
+let mainWindow;
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1400,
+    height: 900,
+    minWidth: 1000,
+    minHeight: 650,
+    icon: path.join(__dirname, 'build', 'icon.png'),
+    backgroundColor: '#0b2c1f',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+  mainWindow.setMenuBarVisibility(false);
+  mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+}
+
+app.whenReady().then(() => {
+  createWindow();
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
+
+// Affiche le fichier dans l'explorateur Windows / Finder (utile pour retrouver son emplacement réel)
+ipcMain.handle('show-in-folder', async (event, filePath) => {
+  if (filePath && fs.existsSync(filePath)) {
+    shell.showItemInFolder(filePath);
+    return true;
+  }
+  return false;
+});
+
+// Lit un fichier lié et le renvoie en base64 — utilisé uniquement au moment de le
+// partager en ligne (Supabase), puisque le destinataire, sur un autre ordinateur,
+// a besoin du contenu réel et non du chemin (qui n'a de sens que sur votre poste).
+ipcMain.handle('read-file-base64', async (event, filePath) => {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    const data = fs.readFileSync(filePath);
+    const ext = path.extname(filePath).toLowerCase();
+    const mimeMap = {
+      '.pdf': 'application/pdf', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif', '.txt': 'text/plain', '.csv': 'text/csv', '.doc': 'application/msword',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.xls': 'application/vnd.ms-excel', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      '.ppt': 'application/vnd.ms-powerpoint', '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    };
+    const mime = mimeMap[ext] || 'application/octet-stream';
+    return `data:${mime};base64,${data.toString('base64')}`;
+  } catch (e) {
+    return null;
+  }
+});
+
+// --- Ponts IPC utilisés par l'application (voir preload.js) ---
+
+// Ouvre un fichier avec le logiciel par défaut de l'ordinateur (Word, Excel, Acrobat, visionneuse d'image…)
+ipcMain.handle('open-path', async (event, filePath) => {
+  if (!filePath || !fs.existsSync(filePath)) {
+    return { ok: false, error: "Fichier introuvable à cet emplacement. Il a peut-être été déplacé ou renommé." };
+  }
+  const result = await shell.openPath(filePath);
+  return result === '' ? { ok: true } : { ok: false, error: result };
+});
+
+// Ouvre le sélecteur natif pour choisir un ou plusieurs fichiers existants (on ne copie jamais leur contenu)
+ipcMain.handle('pick-files', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile', 'multiSelections']
+  });
+  if (result.canceled) return [];
+  return result.filePaths.map((p) => ({
+    path: p,
+    name: path.basename(p),
+    size: fs.existsSync(p) ? fs.statSync(p).size : 0
+  }));
+});
+
+// Sauvegarde/chargement de la base de données locale (remplace localStorage — fonctionne 100% hors ligne)
+ipcMain.handle('load-db', async () => {
+  try {
+    if (fs.existsSync(DB_FILE())) {
+      return fs.readFileSync(DB_FILE(), 'utf-8');
+    }
+  } catch (e) {}
+  return null;
+});
+ipcMain.handle('save-db', async (event, jsonString) => {
+  try {
+    fs.writeFileSync(DB_FILE(), jsonString, 'utf-8');
+    return true;
+  } catch (e) {
+    return false;
+  }
+});
+
+// Export manuel : demande où enregistrer le fichier .json exporté
+ipcMain.handle('export-db-file', async (event, jsonString, suggestedName) => {
+  const result = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: suggestedName,
+    filters: [{ name: 'JSON', extensions: ['json'] }]
+  });
+  if (result.canceled || !result.filePath) return false;
+  fs.writeFileSync(result.filePath, jsonString, 'utf-8');
+  return true;
+});
+
+// Import manuel : demande quel fichier .json importer
+ipcMain.handle('import-db-file', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    filters: [{ name: 'JSON', extensions: ['json'] }]
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  try {
+    return fs.readFileSync(result.filePaths[0], 'utf-8');
+  } catch (e) {
+    return null;
+  }
+});
