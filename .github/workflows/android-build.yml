@@ -38,6 +38,15 @@ jobs:
       - name: Générer le projet Android natif
         run: npx cap add android
 
+      - name: Appliquer l'icône personnalisée EcoAudit
+        run: |
+          cp -f icon_assets/mipmap-mdpi/*.png android/app/src/main/res/mipmap-mdpi/
+          cp -f icon_assets/mipmap-hdpi/*.png android/app/src/main/res/mipmap-hdpi/
+          cp -f icon_assets/mipmap-xhdpi/*.png android/app/src/main/res/mipmap-xhdpi/
+          cp -f icon_assets/mipmap-xxhdpi/*.png android/app/src/main/res/mipmap-xxhdpi/
+          cp -f icon_assets/mipmap-xxxhdpi/*.png android/app/src/main/res/mipmap-xxxhdpi/
+          rm -rf android/app/src/main/res/mipmap-anydpi-v26
+
       - name: Synchroniser l'application web dans le projet Android
         run: npx cap sync android
 
