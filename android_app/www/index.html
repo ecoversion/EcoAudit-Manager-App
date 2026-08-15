@@ -112,6 +112,13 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margi
   display:grid;grid-template-columns:1.05fr 1fr;background:rgba(255,255,255,.97);
   border-radius:20px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.45);
 }
+@media (max-width:700px){
+  #loginScreen{padding:16px;align-items:flex-start;}
+  .login-wrap{grid-template-columns:1fr;max-width:480px;border-radius:16px;}
+  .login-side{padding:30px 24px;}
+  .login-form{padding:30px 24px;}
+  .login-side h2{font-size:19px;}
+}
 .login-side{
   background:linear-gradient(165deg,var(--forest-900),var(--forest-700) 70%);
   color:#fff;padding:48px 40px;display:flex;flex-direction:column;justify-content:space-between;
@@ -1868,7 +1875,6 @@ async function renderQuotaCard(){
     ${pct>=80 ? `<div class="explain" style="margin-top:12px;margin-bottom:0;">⚠️ Quota bientôt atteint pour votre organisation — pensez à exporter et sauvegarder localement vos fichiers non encore récupérés, sans quoi les nouveaux partages seront refusés.</div>` : ''}
   `;
 }
-
 
 /* ---------------- boot ---------------- */
 (async function boot(){
