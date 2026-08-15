@@ -71,69 +71,23 @@ ipcMain.handle('read-file-base64', async (event, filePath) => {
   }
 });
 
-// --- Ponts IPC utilisés par l'application (voir preload.js) ---
-
-// Ouvre un fichier avec le logiciel par défaut de l'ordinateur (Word, Excel, Acrobat, visionneuse d'image…)
-ipcMain.handle('open-path', async (event, filePath) => {
-  if (!filePath || !fs.existsSync(filePath)) {
-    return { ok: false, error: "Fichier introuvable à cet emplacement. Il a peut-être été déplacé ou renommé." };
-  }
-  const result = await shell.openPath(filePath);
-  return result === '' ? { ok: true } : { ok: false, error: result };
-});
-
-// Ouvre le sélecteur natif pour choisir un ou plusieurs fichiers existants (on ne copie jamais leur contenu)
-ipcMain.handle('pick-files', async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openFile', 'multiSelections']
-  });
-  if (result.canceled) return [];
-  return result.filePaths.map((p) => ({
-    path: p,
-    name: path.basename(p),
-    size: fs.existsSync(p) ? fs.statSync(p).size : 0
-  }));
-});
-
-// Sauvegarde/chargement de la base de données locale (remplace localStorage — fonctionne 100% hors ligne)
-ipcMain.handle('load-db', async () => {
+// Enregistre un fichier reçu via la synchronisation en ligne comme un vrai fichier local,
+// pour qu'il s'ouvre ensuite exactement comme un fichier lié (via le logiciel par défaut).
+ipcMain.handle('save-received-file', async (event, { name, dataUrl }) => {
   try {
-    if (fs.existsSync(DB_FILE())) {
-      return fs.readFileSync(DB_FILE(), 'utf-8');
-    }
-  } catch (e) {}
-  return null;
-});
-ipcMain.handle('save-db', async (event, jsonString) => {
-  try {
-    fs.writeFileSync(DB_FILE(), jsonString, 'utf-8');
-    return true;
-  } catch (e) {
-    return false;
-  }
-});
-
-// Export manuel : demande où enregistrer le fichier .json exporté
-ipcMain.handle('export-db-file', async (event, jsonString, suggestedName) => {
-  const result = await dialog.showSaveDialog(mainWindow, {
-    defaultPath: suggestedName,
-    filters: [{ name: 'JSON', extensions: ['json'] }]
-  });
-  if (result.canceled || !result.filePath) return false;
-  fs.writeFileSync(result.filePath, jsonString, 'utf-8');
-  return true;
-});
-
-// Import manuel : demande quel fichier .json importer
-ipcMain.handle('import-db-file', async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openFile'],
-    filters: [{ name: 'JSON', extensions: ['json'] }]
-  });
-  if (result.canceled || !result.filePaths.length) return null;
-  try {
-    return fs.readFileSync(result.filePaths[0], 'utf-8');
+    const receivedDir = path.join(app.getPath('userData'), 'ReceivedFiles');
+    if (!fs.existsSync(receivedDir)) fs.mkdirSync(receivedDir, { recursive: true });
+    const base64 = dataUrl.split(',')[1] || '';
+    const safeName = `${Date.now()}_${name}`.replace(/[\\/:*?"<>|]/g, '_');
+    const filePath = path.join(receivedDir, safeName);
+    fs.writeFileSync(filePath, Buffer.from(base64, 'base64'));
+    return filePath;
   } catch (e) {
     return null;
   }
 });
+
+// --- Ponts IPC utilisés par l'application (voir preload.js) ---
+
+// Ouvre un fichier avec le logiciel par défaut de l'ordinateur (Word, Excel, Acrobat, visionneuse d'image…)
+ipcMain.handle('open-path', async (event, filePath) => {
