@@ -305,7 +305,6 @@ tr:hover td{background:var(--paper-dim);}
     </div>
   </div>
   <div class="slogan"><b>« Savoir est un Pouvoir »</b><span class="org">ECOVERSION Group</span></div>
-  <button class="btn small secondary" style="margin-top:16px;background:rgba(255,255,255,.08);color:#fff;border-color:rgba(255,255,255,.25);" onclick="installApp()" type="button">📲 Installer l'application sur cet appareil</button>
   </div>
 </div>
 
@@ -322,7 +321,6 @@ tr:hover td{background:var(--paper-dim);}
     <button class="navbtn" data-view="meetings"><span class="ic">🎥</span> Réunions</button>
     <button class="navbtn" data-view="account"><span class="ic">⚙</span> Mon compte</button>
     <button class="navbtn" data-view="database"><span class="ic">💾</span> Base de données</button>
-    <button class="navbtn" onclick="installApp()" type="button"><span class="ic">📲</span> Installer l'application</button>
     <div class="grow"></div>
     <button class="navbtn" onclick="doLogout()"><span class="ic">⏻</span> Déconnexion</button>
     <div class="foot">© ECOVERSION Group — Application 100% hors ligne</div>
@@ -1871,65 +1869,6 @@ async function renderQuotaCard(){
   `;
 }
 
-/* ---------------- installation (PWA) ---------------- */
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').then((reg) => {
-      if(reg.waiting) showUpdateBanner();
-      reg.addEventListener('updatefound', () => {
-        const newWorker = reg.installing;
-        if(!newWorker) return;
-        newWorker.addEventListener('statechange', () => {
-          if(newWorker.state === 'installed' && navigator.serviceWorker.controller){
-            showUpdateBanner();
-          }
-        });
-      });
-    }).catch(()=>{ /* pas grave si indisponible (ex: ouverture en fichier local) */ });
-
-    let refreshing = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if(refreshing) return;
-      refreshing = true;
-      window.location.reload();
-    });
-  });
-}
-function showUpdateBanner(){
-  if(document.getElementById('updateBanner')) return;
-  const banner = document.createElement('div');
-  banner.id = 'updateBanner';
-  banner.innerHTML = `<span>🔄 Une nouvelle version de l'application est disponible.</span>
-    <button class="btn small gold" onclick="applyUpdate()">Mettre à jour</button>
-    <button class="btn small secondary" onclick="document.getElementById('updateBanner').remove()">Plus tard</button>`;
-  document.body.appendChild(banner);
-}
-function applyUpdate(){
-  navigator.serviceWorker.getRegistration().then(reg=>{
-    if(reg && reg.waiting){ reg.waiting.postMessage('SKIP_WAITING'); }
-  });
-}
-
-let deferredInstallPrompt = null;
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  deferredInstallPrompt = e;
-});
-function installApp(){
-  if(deferredInstallPrompt){
-    deferredInstallPrompt.prompt();
-    deferredInstallPrompt.userChoice.finally(()=>{ deferredInstallPrompt = null; });
-    return;
-  }
-  openModal(`
-    <h3>Installer l'application</h3>
-    <p style="font-size:13.5px;">Selon votre appareil :</p>
-    <p style="font-size:13.5px;"><b>📱 iPhone / iPad (Safari)</b> — bouton Partager (carré avec flèche vers le haut), puis « Sur l'écran d'accueil ».</p>
-    <p style="font-size:13.5px;"><b>📱 Android / tablette (Chrome)</b> — menu ⋮ en haut à droite, puis « Installer l'application » ou « Ajouter à l'écran d'accueil ».</p>
-    <p style="font-size:13.5px;"><b>💻 Ordinateur (Chrome / Edge)</b> — icône d'installation dans la barre d'adresse, ou menu ⋮ → « Installer EcoAudit_Manager App ».</p>
-    <div class="modalActions"><button class="btn" onclick="closeModal()">Compris</button></div>
-  `);
-}
 
 /* ---------------- boot ---------------- */
 (async function boot(){
