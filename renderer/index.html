@@ -1629,18 +1629,19 @@ function shareMeeting(id){
   if(!checked.length){ toast('Choisissez au moins un destinataire.', true); return; }
   closeModal();
   Promise.all(checked.map(to=>syncSendMeeting(m, to))).then(results=>{
-    const successCount = results.filter(r=>r===true).length;
+    const successCount = results.filter(r=>r.ok===true).length;
+    const firstError = results.find(r=>!r.ok)?.error;
     if(successCount === checked.length){
       toast(`Réunion partagée avec ${successCount} personne(s) — apparaîtra dans leur onglet « Réunions » dès leur prochaine synchronisation.`);
     } else if(successCount > 0){
-      toast(`Réunion partagée avec ${successCount}/${checked.length} personne(s) — échec pour les autres, vérifiez votre connexion.`, true);
+      toast(`Réunion partagée avec ${successCount}/${checked.length} personne(s) — échec pour les autres : ${firstError || 'raison inconnue'}`, true);
     } else {
-      toast("Échec de l'envoi de la réunion — vérifiez votre connexion Internet et réessayez.", true);
+      toast(`Échec de l'envoi de la réunion : ${firstError || 'raison inconnue'}`, true);
     }
   });
 }
 async function syncSendMeeting(m, target){
-  if(!navigator.onLine){ return false; }
+  if(!navigator.onLine){ return {ok:false, error:'Pas de connexion Internet'}; }
   const now = new Date().toISOString();
   const result = await relayCall({
     action:'send', username: session.username, passwordHash: session.passwordHash,
@@ -1649,10 +1650,9 @@ async function syncSendMeeting(m, target){
           date_label: m.dateLabel, zoom_url: m.zoomUrl, organisation: m.organisation,
           created_at: now, expires_at: addDuration(now,2,'semaines') }
   });
-  if(!result || !result.ok){
-    console.error('Échec partage réunion:', result && result.error);
-  }
-  return !!(result && result.ok);
+  if(!result){ return {ok:false, error:'Serveur injoignable'}; }
+  if(!result.ok){ return {ok:false, error: result.error || 'Erreur serveur inconnue'}; }
+  return {ok:true};
 }
 
 /* ================= ACCOUNT ================= */
