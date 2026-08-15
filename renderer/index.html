@@ -245,7 +245,7 @@ tr:hover td{background:var(--paper-dim);}
 .chat-box{display:flex;flex-direction:column;height:100%;}
 .chat-msgs{flex:1;overflow-y:auto;padding:10px 4px;display:flex;flex-direction:column;gap:8px;}
 .bubble{max-width:70%;padding:9px 13px;border-radius:14px;font-size:13.5px;position:relative;}
-.bubble.me{align-self:flex-end;background:var(--leaf-500);color:#08210f;border-bottom-right-radius:4px;}
+.bubble.me{align-self:flex-end;background:#dcf1e0;color:var(--forest-900);border-bottom-right-radius:4px;}
 .bubble.them{align-self:flex-start;background:var(--paper-dim);border-bottom-left-radius:4px;}
 .bubble .meta{font-size:10px;opacity:.65;margin-top:3px;}
 
@@ -394,6 +394,7 @@ function addDuration(fromDate, amount, unit){
   const d = new Date(fromDate);
   if(unit==='mois') d.setMonth(d.getMonth()+amount);
   if(unit==='ans') d.setFullYear(d.getFullYear()+amount);
+  if(unit==='semaines') d.setDate(d.getDate()+amount*7);
   return d.toISOString();
 }
 function isExpired(user){
@@ -443,7 +444,7 @@ async function loadLocalCache(){
   return false;
 }
 
-/* ---------------- synchronisation en ligne (Supabase, relais temporaire 3 mois) ---------------- */
+/* ---------------- synchronisation en ligne (Supabase, relais temporaire 2 semaines) ---------------- */
 async function relayCall(payload){
   try{
     const res = await fetch(RELAY_URL, {
@@ -1208,8 +1209,8 @@ function openShareItem(type, id){
       <select id="share_user">${contacts.map(c=>`<option value="${c}">${escapeHtml(c)}</option>`).join('')}</select>
     </div>
     <div class="explain">${type==='file'
-      ? 'Ce fichier sera envoyé automatiquement en ligne dès que vous ou votre collègue serez connectés (<b>3 mois maximum</b>, retiré du serveur dès récupération). Fonctionne aussi en secours par échange manuel de base de données.'
-      : 'Le partage de <b>dossier</b> se fait par échange manuel de base de données (menu « Base de données ») — <b>3 mois maximum</b> le temps que votre collègue le récupère.'}</div>
+      ? 'Ce fichier sera envoyé automatiquement en ligne dès que vous ou votre collègue serez connectés (<b>2 semaines maximum</b>, retiré du serveur dès récupération). Fonctionne aussi en secours par échange manuel de base de données.'
+      : 'Le partage de <b>dossier</b> se fait par échange manuel de base de données (menu « Base de données ») — <b>2 semaines maximum</b> le temps que votre collègue le récupère.'}</div>
     <div class="modalActions">
       <button class="btn secondary" onclick="closeModal()">Annuler</button>
       <button class="btn" onclick="doShare('${type}','${id}')">Partager</button>
@@ -1225,7 +1226,7 @@ function doShare(type, id){
   let meta = item.shareMeta.find(s=>s.username===target);
   if(!meta){
     const now = new Date().toISOString();
-    meta = {username:target, sharedAt:now, expiresAt: addDuration(now,3,'mois'), retrievedAt:null, relaySynced:false};
+    meta = {username:target, sharedAt:now, expiresAt: addDuration(now,2,'semaines'), retrievedAt:null, relaySynced:false};
     item.shareMeta.push(meta);
   }
   if(type==='file'){
@@ -1312,12 +1313,12 @@ function renderMessages(){
         <div class="chat-msgs" id="chatMsgs">
           ${msgs.map(m=>`
             <div class="bubble ${m.from===session.username?'me':'them'}">
-              ${escapeHtml(m.content)}
+              <div style="white-space:pre-wrap;">${escapeHtml(m.content)}</div>
               <div class="meta">${fmtDateTime(m.sentAt)} ${m.from===session.username? '· '+(m.status==='lu'? '✓✓ Lu'+(m.readAt?(' le '+fmtDateTime(m.readAt)):'') : '✓ Envoyé') : ''}</div>
             </div>`).join('') || '<div class="emptystate">Aucun message. Dites bonjour 👋</div>'}
         </div>
-        <div class="row" style="margin-top:10px;">
-          <input type="text" id="newMsgInput" placeholder="Écrire un message…" onkeydown="if(event.key==='Enter')sendMessage()">
+        <div class="row" style="margin-top:10px;align-items:flex-end;">
+          <textarea id="newMsgInput" placeholder="Écrire un message… (Entrée pour revenir à la ligne)" rows="2" style="resize:vertical;font-family:inherit;"></textarea>
           <button class="btn" style="flex:none;" onclick="sendMessage()">Envoyer</button>
         </div>
       </div>`;
@@ -1392,7 +1393,7 @@ function sendMessage(){
   const content = input.value.trim();
   if(!content) return;
   const now = new Date().toISOString();
-  const msg = {id:uid('msg'), from:session.username, to:activeConversation, content, sentAt:now, status:'envoyé', readAt:null, expiresAt: addDuration(now,3,'mois'), relaySynced:false};
+  const msg = {id:uid('msg'), from:session.username, to:activeConversation, content, sentAt:now, status:'envoyé', readAt:null, expiresAt: addDuration(now,2,'semaines'), relaySynced:false};
   DB.messages.push(msg);
   syncSendMessage(msg).then(ok=>{ if(ok){ msg.relaySynced = true; persistLocal(); } });
   input.value='';
@@ -1637,7 +1638,7 @@ function renderDatabaseView(){
     <div class="card" style="max-width:640px;">
       <h3>Comment ça marche</h3>
       <p style="font-weight:700;margin-bottom:4px;">Pourquoi mes partages expirent-ils ?</p>
-      <p style="color:var(--ink-soft);font-size:13px;">Pour protéger vos données, celles-ci ne sont pas stockées durablement sur nos serveurs. Un fichier ou message partagé y transite temporairement (jusqu'à 3 mois maximum) le temps que votre collègue le récupère. Une fois récupéré, il est retiré du serveur sous 24h. La seule sauvegarde durable de vos données reste votre export JSON local — pensez à l'effectuer régulièrement.</p>
+      <p style="color:var(--ink-soft);font-size:13px;">Pour protéger vos données, celles-ci ne sont pas stockées durablement sur nos serveurs. Un fichier ou message partagé y transite temporairement (jusqu'à 2 semaines maximum) le temps que votre collègue le récupère. Une fois récupéré, il est retiré du serveur sous 24h. La seule sauvegarde durable de vos données reste votre export JSON local — pensez à l'effectuer régulièrement.</p>
     </div>
   `;
 }
