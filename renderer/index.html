@@ -1574,7 +1574,7 @@ function renderMeetings(){
           <td>${escapeHtml(m.title)} ${m.sharedToMe ? '<span class="badge ok">Partagée avec vous</span>' : ''}</td>
           <td>${escapeHtml(m.dateLabel)}</td>
           <td>${escapeHtml(m.ownerUsername)}</td>
-          <td><a class="btn small gold" target="_blank" rel="noopener" href="${escapeHtml(m.zoomUrl)}">🎥 Rejoindre</a>
+          <td><a class="btn small" style="background:#2d6cdf;color:#ffffff;" target="_blank" rel="noopener" href="${escapeHtml(m.zoomUrl)}">🎥 Rejoindre</a>
               ${m.sharedToMe ? '' : `<button class="btn small secondary" onclick="openShareMeeting('${m.id}')">Partager la réunion</button>`}
               <button class="btn small secondary" onclick="deleteMeeting('${m.id}')">${m.sharedToMe ? 'Retirer' : 'Supprimer'}</button></td>
         </tr>`).join('') || `<tr><td colspan="4"><div class="emptystate">Aucune réunion planifiée.</div></td></tr>`}
