@@ -481,18 +481,20 @@ async function syncFromCloud(silent){
   if(!result || result.error){ if(!silent) toast("Synchronisation impossible pour le moment.", true); return; }
   let addedCount = 0;
   const inbox = ensureInboxFolder();
-  (result.shares||[]).forEach(s=>{
+  for(const s of (result.shares||[])){
     try{
       const p = JSON.parse(s.payload);
-      if(DB.files.some(f=>f.id===p.fileId+':relay:'+s.id)) return;
+      if(DB.files.some(f=>f.id===p.fileId+':relay:'+s.id)) continue;
+      const savedPath = await window.electronAPI.saveReceivedFile({ name:p.name, dataUrl:p.dataUrl });
       DB.files.push({
-        id: uid('file'), folderId: inbox.id, name: p.name, size: p.size, dataUrl: p.dataUrl,
+        id: uid('file'), folderId: inbox.id, name: p.name, size: p.size,
+        path: savedPath || undefined, dataUrl: savedPath ? undefined : p.dataUrl,
         organisation: session.organisation, ownerUsername: s.from_username, sharedWith:[], shareMeta:[],
         uploadedAt: new Date().toISOString()
       });
       addedCount++;
     }catch(e){}
-  });
+  }
   (result.messages||[]).forEach(m=>{
     if(DB.messages.some(x=>x.id===m.id)) return;
     DB.messages.push({id:m.id, from:m.from_username, to:m.to_username, content:m.content, sentAt:m.sent_at, status:'envoyé', readAt:null, expiresAt:m.expires_at});
