@@ -507,6 +507,12 @@ async function syncFromCloud(silent){
     DB.contacts.push({id:c.id, from:c.from_username, to:c.to_username, status:c.status, createdAt:c.created_at});
     addedCount++;
   });
+  (result.meetings||[]).forEach(m=>{
+    if(DB.meetings.some(x=>x.id===m.id)) return;
+    DB.meetings.push({id:m.id, ownerUsername:m.from_username, title:m.title, dateLabel:m.date_label, zoomUrl:m.zoom_url,
+      organisation: m.organisation || session.organisation, sharedToMe:true});
+    addedCount++;
+  });
   // met à jour le statut de ce que j'ai envoyé (récupéré par le destinataire ou non)
   const status = await relayCall({ action:'fetch-status', username: session.username, passwordHash: session.passwordHash });
   if(status && !status.error){
@@ -1557,7 +1563,7 @@ function deleteLink(id){
 /* ================= MEETINGS ================= */
 function renderMeetings(){
   const el = document.getElementById('view-meetings');
-  const mine = DB.meetings.filter(m=>m.ownerUsername===session.username || session.role==='admin');
+  const mine = DB.meetings.filter(m=>m.ownerUsername===session.username || session.role==='admin' || m.sharedToMe);
   el.innerHTML = `
     <div class="explain">Les réunions Zoom nécessitent une connexion Internet active et l'application Zoom au moment de la réunion — cette partie ne peut pas fonctionner hors ligne. Créez ici l'entrée de réunion (avec le lien généré depuis votre compte Zoom) pour la partager avec votre équipe.</div>
     <div class="toolbar"><button class="btn" onclick="openNewMeeting()">+ Planifier une réunion</button></div>
@@ -1565,12 +1571,12 @@ function renderMeetings(){
       <table><thead><tr><th>Titre</th><th>Date / heure</th><th>Organisateur</th><th></th></tr></thead>
       <tbody>
         ${mine.map(m=>`<tr>
-          <td>${escapeHtml(m.title)}</td>
+          <td>${escapeHtml(m.title)} ${m.sharedToMe ? '<span class="badge ok">Partagée avec vous</span>' : ''}</td>
           <td>${escapeHtml(m.dateLabel)}</td>
           <td>${escapeHtml(m.ownerUsername)}</td>
           <td><a class="btn small gold" target="_blank" rel="noopener" href="${escapeHtml(m.zoomUrl)}">🎥 Rejoindre</a>
-              <button class="btn small secondary" onclick="openShareMeeting('${m.id}')">Partager la réunion</button>
-              <button class="btn small secondary" onclick="deleteMeeting('${m.id}')">Supprimer</button></td>
+              ${m.sharedToMe ? '' : `<button class="btn small secondary" onclick="openShareMeeting('${m.id}')">Partager la réunion</button>`}
+              <button class="btn small secondary" onclick="deleteMeeting('${m.id}')">${m.sharedToMe ? 'Retirer' : 'Supprimer'}</button></td>
         </tr>`).join('') || `<tr><td colspan="4"><div class="emptystate">Aucune réunion planifiée.</div></td></tr>`}
       </tbody></table>
     </div>
@@ -1621,15 +1627,23 @@ function shareMeeting(id){
   if(!m) return;
   const checked = Array.from(document.querySelectorAll('#sm_contacts input:checked')).map(i=>i.value);
   if(!checked.length){ toast('Choisissez au moins un destinataire.', true); return; }
-  const content = `📅 Réunion partagée : « ${m.title} »\nQuand : ${m.dateLabel}\nLien : ${m.zoomUrl}`;
   checked.forEach(to=>{
-    const now = new Date().toISOString();
-    const msg = {id:uid('msg'), from:session.username, to, content, sentAt:now, status:'envoyé', readAt:null, expiresAt: addDuration(now,2,'semaines'), relaySynced:false};
-    DB.messages.push(msg);
-    syncSendMessage(msg).then(ok=>{ if(ok){ msg.relaySynced = true; persistLocal(); } });
+    syncSendMeeting(m, to);
   });
-  toast(`Réunion partagée avec ${checked.length} personne(s).`);
+  toast(`Réunion partagée avec ${checked.length} personne(s) — apparaîtra dans leur onglet « Réunions » dès leur prochaine synchronisation.`);
   closeModal();
+}
+async function syncSendMeeting(m, target){
+  if(!navigator.onLine){ toast("Connexion Internet requise pour partager une réunion.", true); return false; }
+  const now = new Date().toISOString();
+  const result = await relayCall({
+    action:'send', username: session.username, passwordHash: session.passwordHash,
+    kind:'meeting',
+    row:{ id: uid('mrel'), from_username: session.username, to_username: target, title: m.title,
+          date_label: m.dateLabel, zoom_url: m.zoomUrl, organisation: m.organisation,
+          created_at: now, expires_at: addDuration(now,2,'semaines') }
+  });
+  return !!(result && result.ok);
 }
 
 /* ================= ACCOUNT ================= */
