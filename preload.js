@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   pickFiles: () => ipcRenderer.invoke('pick-files'),
   showInFolder: (filePath) => ipcRenderer.invoke('show-in-folder', filePath),
   readFileBase64: (filePath) => ipcRenderer.invoke('read-file-base64', filePath),
+  saveReceivedFile: (payload) => ipcRenderer.invoke('save-received-file', payload),
   loadDB: () => ipcRenderer.invoke('load-db'),
   saveDB: (jsonString) => ipcRenderer.invoke('save-db', jsonString),
   exportDbFile: (jsonString, suggestedName) => ipcRenderer.invoke('export-db-file', jsonString, suggestedName),
