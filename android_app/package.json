@@ -1,0 +1,15 @@
+{
+  "name": "ecoaudit-manager-android",
+  "version": "1.1.0",
+  "description": "EcoAudit_Manager App — enveloppe Android (Capacitor) pour ECOVERSION Group",
+  "scripts": {
+    "build": "echo 'Site statique — rien à compiler ici, voir www/'"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/core": "^6.1.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2"
+  }
+}

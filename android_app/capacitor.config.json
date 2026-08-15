@@ -1,0 +1,7 @@
+{
+  "appId": "com.ecoversiongroup.ecoauditmanager",
+  "appName": "EcoAudit_Manager App",
+  "webDir": "www",
+  "bundledWebRuntime": false,
+  "backgroundColor": "#0b2c1f"
+}
