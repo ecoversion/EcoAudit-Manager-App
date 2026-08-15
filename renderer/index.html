@@ -471,9 +471,10 @@ async function syncPushUsers(){
     action:'sync-users',
     adminUsername: DB.admin.username,
     adminPasswordHash: DB.admin.passwordHash,
-    users: DB.users.map(u=>({username:u.username, passwordHash:u.passwordHash, role:u.role}))
+    adminOrganisation: 'ECOVERSION Group',
+    users: DB.users.map(u=>({username:u.username, passwordHash:u.passwordHash, role:u.role, organisation:u.organisation, expiresAt:u.expiresAt, active:u.active}))
   });
-  if(result && result.ok){ toast(`Annuaire synchronisé (${result.synced} compte(s)).`); }
+  if(result && result.ok){ toast(`Annuaire synchronisé (${result.synced} compte(s)) — vos utilisateurs peuvent désormais se connecter depuis un autre poste.`); }
   else { toast("Synchronisation impossible — vérifiez votre connexion Internet.", true); }
 }
 async function syncFromCloud(silent){
@@ -527,10 +528,22 @@ async function syncSendShare(file, target){
   const result = await relayCall({
     action:'send', username: session.username, passwordHash: session.passwordHash,
     kind:'share',
-    row:{ id: uid('rel'), kind:'file', from_username: session.username, to_username: target, item_name: file.name,
+    row:{ id: uid('rel'), kind:'file', from_username: session.username, to_username: target, item_name: file.name, size_bytes: file.size || 0,
           payload: JSON.stringify({fileId:file.id, name:file.name, size:file.size, dataUrl}) }
   });
+  if(result && result.error && /quota/i.test(result.error)){
+    toast(result.error, true);
+  }
   return !!(result && result.ok);
+}
+async function fetchQuota(){
+  if(!session || !navigator.onLine) return null;
+  const result = await relayCall({ action:'check-quota', username: session.username, passwordHash: session.passwordHash });
+  if(!result || result.error) return null;
+  return result;
+}
+function fmtMo(bytes){
+  return (bytes/1024/1024).toFixed(0) + ' Mo';
 }
 async function syncSendMessage(msg){
   if(!navigator.onLine) return false;
@@ -693,23 +706,43 @@ async function doLogin(){
     return;
   }
   const user = DB.users.find(x=>x.username===u);
-  if(!user || user.passwordHash !== hash){
-    errBox.textContent = "Identifiants incorrects.";
-    errBox.style.display='block';
+  if(user){
+    if(user.passwordHash !== hash){
+      errBox.textContent = "Identifiants incorrects.";
+      errBox.style.display='block';
+      return;
+    }
+    if(!user.active){
+      errBox.textContent = "Ce compte a été désactivé par l'administrateur.";
+      errBox.style.display='block';
+      return;
+    }
+    if(isExpired(user)){
+      errBox.textContent = "Ce compte a expiré le " + fmtDate(user.expiresAt) + ". Contactez l'administrateur principal.";
+      errBox.style.display='block';
+      return;
+    }
+    session = {username:user.username, role:user.role, organisation:user.organisation, passwordHash:hash};
+    enterApp();
     return;
   }
-  if(!user.active){
-    errBox.textContent = "Ce compte a été désactivé par l'administrateur.";
-    errBox.style.display='block';
-    return;
+  if(navigator.onLine){
+    const result = await relayCall({ action:'verify-login', username:u, passwordHash:hash });
+    if(result && result.ok){
+      session = {username:u, role:result.role, organisation:result.organisation, passwordHash:hash};
+      DB.users.push({ id: uid('user'), username:u, passwordHash:hash, role:result.role, organisation:result.organisation,
+        createdAt:new Date().toISOString(), expiresAt: result.expiresAt || null, active:true, createdBy:'cloud-verify' });
+      enterApp();
+      return;
+    }
+    if(result && result.error){
+      errBox.textContent = result.error;
+      errBox.style.display='block';
+      return;
+    }
   }
-  if(isExpired(user)){
-    errBox.textContent = "Ce compte a expiré le " + fmtDate(user.expiresAt) + ". Contactez l'administrateur principal.";
-    errBox.style.display='block';
-    return;
-  }
-  session = {username:user.username, role:user.role, organisation:user.organisation, passwordHash:hash};
-  enterApp();
+  errBox.textContent = "Identifiants incorrects, ou compte non encore connu sur ce poste (nécessite une connexion Internet la première fois).";
+  errBox.style.display='block';
 }
 function doLogout(){
   session = null; activeConversation=null; selectedFolderId=null;
@@ -1536,6 +1569,7 @@ function renderMeetings(){
           <td>${escapeHtml(m.dateLabel)}</td>
           <td>${escapeHtml(m.ownerUsername)}</td>
           <td><a class="btn small gold" target="_blank" rel="noopener" href="${escapeHtml(m.zoomUrl)}">🎥 Rejoindre</a>
+              <button class="btn small secondary" onclick="openShareMeeting('${m.id}')">Partager la réunion</button>
               <button class="btn small secondary" onclick="deleteMeeting('${m.id}')">Supprimer</button></td>
         </tr>`).join('') || `<tr><td colspan="4"><div class="emptystate">Aucune réunion planifiée.</div></td></tr>`}
       </tbody></table>
@@ -1565,6 +1599,38 @@ function createMeeting(){
   closeModal(); renderMeetings();
 }
 function deleteMeeting(id){ DB.meetings = DB.meetings.filter(m=>m.id!==id); renderMeetings(); }
+function openShareMeeting(id){
+  const m = DB.meetings.find(x=>x.id===id);
+  if(!m) return;
+  const contacts = acceptedContactsOf(session.username);
+  if(!contacts.length){ toast('Ajoutez d\'abord un contact accepté via la Messagerie.', true); return; }
+  openModal(`
+    <h3>Partager la réunion</h3>
+    <p style="font-size:12.5px;color:var(--ink-soft);">Envoyé comme message à vos contacts, avec accusé de réception, pour qu'ils voient quand ils l'ont consulté.</p>
+    <div class="field"><label>Destinataires</label>
+      <div id="sm_contacts">${contacts.map(c=>`<label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13.5px;"><input type="checkbox" value="${escapeHtml(c)}"> ${escapeHtml(c)}</label>`).join('')}</div>
+    </div>
+    <div class="modalActions">
+      <button class="btn secondary" onclick="closeModal()">Annuler</button>
+      <button class="btn" onclick="shareMeeting('${id}')">Envoyer</button>
+    </div>
+  `);
+}
+function shareMeeting(id){
+  const m = DB.meetings.find(x=>x.id===id);
+  if(!m) return;
+  const checked = Array.from(document.querySelectorAll('#sm_contacts input:checked')).map(i=>i.value);
+  if(!checked.length){ toast('Choisissez au moins un destinataire.', true); return; }
+  const content = `📅 Réunion partagée : « ${m.title} »\nQuand : ${m.dateLabel}\nLien : ${m.zoomUrl}`;
+  checked.forEach(to=>{
+    const now = new Date().toISOString();
+    const msg = {id:uid('msg'), from:session.username, to, content, sentAt:now, status:'envoyé', readAt:null, expiresAt: addDuration(now,2,'semaines'), relaySynced:false};
+    DB.messages.push(msg);
+    syncSendMessage(msg).then(ok=>{ if(ok){ msg.relaySynced = true; persistLocal(); } });
+  });
+  toast(`Réunion partagée avec ${checked.length} personne(s).`);
+  closeModal();
+}
 
 /* ================= ACCOUNT ================= */
 function renderAccount(){
@@ -1615,6 +1681,10 @@ function renderDatabaseView(){
       <button class="btn" onclick="syncFromCloud(false)" ${online?'':'disabled'}>🔄 Synchroniser maintenant</button>
       ${session.role==='admin' ? `<button class="btn secondary" onclick="syncPushUsers()" ${online?'':'disabled'} style="margin-left:8px;">📇 Synchroniser l'annuaire des comptes</button>` : ''}
     </div>
+    <div class="card" style="max-width:640px;" id="quotaCard">
+      <h3>Espace utilisé sur le relais (par organisation)</h3>
+      <div id="quotaBody" style="color:var(--ink-soft);font-size:13px;">${online ? 'Chargement…' : 'Connectez-vous à Internet pour voir votre quota.'}</div>
+    </div>
     <div class="card" style="max-width:640px;">
       <h3>Export de la base de données</h3>
       <p style="color:var(--ink-soft);font-size:13px;">Télécharger un fichier .json contenant tous les comptes, dossiers, fichiers, messages et paramètres actuels afin d'être conservé précieusement et exporté après chaque modification importante.</p>
@@ -1639,7 +1709,29 @@ function renderDatabaseView(){
       <h3>Comment ça marche</h3>
       <p style="font-weight:700;margin-bottom:4px;">Pourquoi mes partages expirent-ils ?</p>
       <p style="color:var(--ink-soft);font-size:13px;">Pour protéger vos données, celles-ci ne sont pas stockées durablement sur nos serveurs. Un fichier ou message partagé y transite temporairement (jusqu'à 2 semaines maximum) le temps que votre collègue le récupère. Une fois récupéré, il est retiré du serveur sous 24h. La seule sauvegarde durable de vos données reste votre export JSON local — pensez à l'effectuer régulièrement.</p>
+      <p style="font-weight:700;margin:14px 0 4px;">Pourquoi un quota par organisation ?</p>
+      <p style="color:var(--ink-soft);font-size:13px;">Chaque organisation dispose d'1 Go d'espace de transit partagé entre tous ses membres. Au-delà, les nouveaux partages sont refusés tant que de la place ne se libère pas (récupération par le destinataire, ou expiration au bout de 2 semaines). Exportez régulièrement vos fichiers importants en local pour ne jamais dépendre de cet espace temporaire.</p>
     </div>
+  `;
+  if(online) renderQuotaCard();
+}
+async function renderQuotaCard(){
+  const body = document.getElementById('quotaBody');
+  if(!body) return;
+  const q = await fetchQuota();
+  if(!body || !document.getElementById('quotaBody')) return;
+  if(!q){ document.getElementById('quotaBody').textContent = 'Quota indisponible pour le moment.'; return; }
+  const pct = Math.min(100, Math.round((q.usedBytes / q.limitBytes) * 100));
+  const barColor = pct>=90 ? 'var(--red)' : (pct>=70 ? 'var(--gold)' : 'var(--leaf-500)');
+  document.getElementById('quotaBody').innerHTML = `
+    <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:6px;">
+      <span>${escapeHtml(q.organisation || session.organisation)}</span>
+      <span><b>${fmtMo(q.usedBytes)}</b> / ${fmtMo(q.limitBytes)} (${pct}%)</span>
+    </div>
+    <div style="background:var(--paper-dim);border-radius:999px;height:10px;overflow:hidden;">
+      <div style="width:${pct}%;height:100%;background:${barColor};"></div>
+    </div>
+    ${pct>=80 ? `<div class="explain" style="margin-top:12px;margin-bottom:0;">⚠️ Quota bientôt atteint pour votre organisation — pensez à exporter et sauvegarder localement vos fichiers non encore récupérés, sans quoi les nouveaux partages seront refusés.</div>` : ''}
   `;
 }
 
