@@ -1627,14 +1627,20 @@ function shareMeeting(id){
   if(!m) return;
   const checked = Array.from(document.querySelectorAll('#sm_contacts input:checked')).map(i=>i.value);
   if(!checked.length){ toast('Choisissez au moins un destinataire.', true); return; }
-  checked.forEach(to=>{
-    syncSendMeeting(m, to);
-  });
-  toast(`Réunion partagée avec ${checked.length} personne(s) — apparaîtra dans leur onglet « Réunions » dès leur prochaine synchronisation.`);
   closeModal();
+  Promise.all(checked.map(to=>syncSendMeeting(m, to))).then(results=>{
+    const successCount = results.filter(r=>r===true).length;
+    if(successCount === checked.length){
+      toast(`Réunion partagée avec ${successCount} personne(s) — apparaîtra dans leur onglet « Réunions » dès leur prochaine synchronisation.`);
+    } else if(successCount > 0){
+      toast(`Réunion partagée avec ${successCount}/${checked.length} personne(s) — échec pour les autres, vérifiez votre connexion.`, true);
+    } else {
+      toast("Échec de l'envoi de la réunion — vérifiez votre connexion Internet et réessayez.", true);
+    }
+  });
 }
 async function syncSendMeeting(m, target){
-  if(!navigator.onLine){ toast("Connexion Internet requise pour partager une réunion.", true); return false; }
+  if(!navigator.onLine){ return false; }
   const now = new Date().toISOString();
   const result = await relayCall({
     action:'send', username: session.username, passwordHash: session.passwordHash,
@@ -1643,6 +1649,9 @@ async function syncSendMeeting(m, target){
           date_label: m.dateLabel, zoom_url: m.zoomUrl, organisation: m.organisation,
           created_at: now, expires_at: addDuration(now,2,'semaines') }
   });
+  if(!result || !result.ok){
+    console.error('Échec partage réunion:', result && result.error);
+  }
   return !!(result && result.ok);
 }
 
